@@ -1,0 +1,22 @@
+To Insert Admin
+
+{
+  "name": "System Admin",
+  "email": "admin@smartticket.ai",
+  "password": "$2b$10$7MWPnb0i87rIDltoR/XxuuFXdu1Jpk1bC5oIFUui9flfobbhTCBZe",
+  "role": "admin",
+  "skills": ["Management", "Security", "Infrastructure"],
+  "createdAt": { "$date": "2024-05-20T10:00:00Z" }
+}
+
+
+To Insert Moderators
+
+{
+  "name": "Ticket Moderator",
+  "email": "mod@smartticket.ai",
+  "password": "your_hashed_password_here",
+  "role": "moderator",
+  "skills": ["Customer Support", "Technical Triage"],
+  "createdAt": { "$date": "2024-05-20T10:05:00Z" }
+}   

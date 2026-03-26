@@ -162,3 +162,37 @@ export const getUsers = async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 };
+// ✅ Add this to the bottom of controllers/user.js
+export const deleteUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // 1. Authorization: Only admins can delete users
+    if (!req.user || req.user.role !== "admin") {
+      return res.status(403).json({ message: "Forbidden: Admin access required" });
+    }
+
+    // 2. Prevent Self-Deletion: Admin cannot delete their own account
+    if (id === req.user.id) {
+      return res.status(400).json({ message: "You cannot delete your own admin account" });
+    }
+
+    const userToDelete = await User.findById(id);
+    if (!userToDelete) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // 3. Perform Deletion
+    await User.findByIdAndDelete(id);
+
+    // 4. Cleanup: Unassign tickets previously handled by this user
+    // Note: Import Ticket model at the top of this file if not already present
+    // await Ticket.updateMany({ assignedTo: id }, { assignedTo: null });
+
+    res.status(200).json({ message: "User deleted successfully" });
+  } 
+  catch (error) {
+    console.error("Error deleting user:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};

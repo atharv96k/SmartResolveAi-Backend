@@ -27,32 +27,3 @@ export const sendMail = async (to, subject, text) => {
     throw new Error("Failed to send email");
   }
 };
-
-// import nodemailer from "nodemailer";
-// import dotenv from "dotenv";
-// dotenv.config();
-
-// export const sendMail = async (to, subject, text) => {
-//   try {
-//     const transporter = nodemailer.createTransport({
-//       service: "gmail",
-//       auth: {
-//         user: process.env.GMAIL_USER,
-//         pass: process.env.GMAIL_PASS,
-//       },
-//     });
-
-//     const info = await transporter.sendMail({
-//       from: `"TMS App" <${process.env.GMAIL_USER}>`,
-//       to,
-//       subject,
-//       text,
-//     });
-
-//     console.log("Message sent: ", info.messageId);
-//     return info;
-//   } catch (error) {
-//     console.error("Error sending email:", error.message);
-//     throw new Error("Failed to send email");
-//   }
-// };

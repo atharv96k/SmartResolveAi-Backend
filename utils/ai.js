@@ -1,141 +1,214 @@
 import { GoogleGenAI } from "@google/genai";
-
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-const analyzeTicket = async (ticket) => {
+/**
+ * Moderator Skill Registry
+ * Used by AI to match ticket requirements against known moderator skill sets
+ */
+const MODERATOR_SKILLS = {
+  "System Admin": [
+    "Management",
+    "Security",
+    "Infrastructure",
+    "Database Optimization",
+    "API Architecture",
+    "AI Governance",
+    "IAM",
+    "Compliance",
+    "Network Security",
+    "System Monitoring",
+    "Incident Response",
+    "Cloud Management",
+  ],
+  "AI Moderator": [
+    "Python",
+    "AI/ML",
+    "OpenAI API",
+    "LangChain",
+    "Vector Databases",
+    "Prompt Engineering",
+    "HuggingFace",
+    "FastAPI",
+    "RAG",
+    "Fine-tuning",
+  ],
+  "Frontend Moderator": [
+    "HTML5",
+    "CSS3",
+    "JavaScript",
+    "React",
+    "Tailwind CSS",
+    "Next.js",
+    "TypeScript",
+    "GraphQL",
+    "Webpack",
+    "Accessibility (a11y)",
+  ],
+  "Backend Moderator": [
+    "Node.js",
+    "Express",
+    "MongoDB",
+    "PostgreSQL",
+    "Redis",
+    "Payment Processing",
+    "GraphQL",
+    "REST APIs",
+    "Microservices",
+    "JWT Auth",
+  ],
+  "DevOps Moderator": [
+    "Docker",
+    "Kubernetes",
+    "AWS",
+    "GitHub Actions",
+    "Nginx",
+    "Linux",
+    "Terraform",
+    "CI/CD Pipelines",
+    "Monitoring",
+    "Ansible",
+  ],
+};
 
-  const systemInstruction = `You are an expert AI assistant that processes technical support tickets. 
+
+const ALL_SKILLS = [...new Set(Object.values(MODERATOR_SKILLS).flat())];
+
+/**
+ * Standard Ticket Analysis
+ */
+export const analyzeTicket = async (ticket) => {
+  const systemInstruction = `You are an expert AI assistant that processes technical support tickets.
 
 Your job is to:
 1. Summarize the issue.
 2. Estimate its priority.
 3. Provide helpful notes and resource links for human moderators.
-4. List relevant technical skills required.
-5. Keep Helpul Notes Crisp 2-4 lines only
+4. Extract the relevant technical skills required to resolve this ticket.
 
-IMPORTANT:
-- Respond with *only* valid raw JSON.
-- Do NOT include markdown, code fences, comments, or any extra formatting.
-- The format must be a raw JSON object.
+SKILL EXTRACTION RULES:
+- You must ONLY return skills from this predefined list: [${ALL_SKILLS.join(", ")}]
+- Match skills based on the technical context of the ticket (e.g., a React bug → return "React", "JavaScript", "TypeScript")
+- Return between 2 to 6 most relevant skills only
+- Do NOT invent or add skills outside the predefined list
+- Keep Helpful Notes crisp: 2-4 lines only
 
-Repeat: Do not wrap your output in markdown or code fences.`;
+IMPORTANT: Respond with *only* valid raw JSON. Do NOT include markdown code fences.`;
 
-  const userPrompt = `You are a ticket triage agent. Only return a strict JSON object with no extra text, headers, or markdown.
-        
-Analyze the following support ticket and provide a JSON object with:
-
-- summary: A short 1-2 sentence summary of the issue.
+  const userPrompt = `Analyze the following support ticket and provide a JSON object with:
+- summary: A short 1-2 sentence summary.
 - priority: One of "low", "medium", or "high".
-- helpfulNotes: A detailed technical explanation that a moderator can use to solve this issue. Include useful external links or resources if possible.
-- relatedSkills: An array of relevant skills required to solve the issue (e.g., ["React", "MongoDB"]).
+- helpfulNotes: Detailed technical explanation for moderators (2-4 lines).
+- relatedSkills: Array of relevant skills strictly from the predefined skill list.
 
-Respond ONLY in this JSON format and do not include any other text or markdown in the answer:
-
-{
-"summary": "Short summary of the ticket",
-"priority": "HIGH",
-"helpfulNotes": "Here are useful tips...",
-"relatedSkills": ["React", "Node.js"]
-}
-
----
-
-Ticket information:
-
-- Title: ${ticket.title}
-- Description: ${ticket.description}`;
+Ticket Title: ${ticket.title}
+Ticket Description: ${ticket.description}`;
 
   try {
-    // Calling the Gemini API
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       config: {
-        responseMimeType: "application/json", 
+        responseMimeType: "application/json",
         systemInstruction: systemInstruction,
       },
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: userPrompt }],
-        },
-      ],
+      contents: [{ role: "user", parts: [{ text: userPrompt }] }],
     });
-
-    const raw = response.text; 
-
-    // Check if raw response exists
-    if (!raw) {
-      console.error(
-        "AI response is empty or undefined. Full response structure:",
-        JSON.stringify(response, null, 2)
-      );
-      return null;
-    }
-
-    // Cleaning the response string
-    let cleanedResponse = String(raw).trim();
-
-    // First, try to extract JSON from markdown code blocks (fallback)
-    const markdownMatch = cleanedResponse.match(/```json\n([\s\S]*?)\n```/i) || 
-                          cleanedResponse.match(/```([\s\S]*?)```/i);
-    
-    if (markdownMatch) {
-      cleanedResponse = markdownMatch[1].trim();
-    }
-
-    // Remove any leading/trailing text that might interfere with JSON parsing
-    // Look for JSON object boundaries
-    const jsonStart = cleanedResponse.indexOf("{");
-    const jsonEnd = cleanedResponse.lastIndexOf("}");
-
-    if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
-      cleanedResponse = cleanedResponse.substring(jsonStart, jsonEnd + 1);
-    }
-
-    // Parse the JSON
-    const parsedResult = JSON.parse(cleanedResponse);
-
-    // Validate the required fields
-    if (
-      !parsedResult.summary ||
-      !parsedResult.priority ||
-      !parsedResult.helpfulNotes ||
-      !parsedResult.relatedSkills
-    ) {
-      console.warn("Parsed JSON is missing required fields:", parsedResult);
-    }
-
-
-    const validPriorities = ["LOW", "MEDIUM", "HIGH"];
-    if (!validPriorities.includes(parsedResult.priority.toUpperCase())) {
-      console.warn(
-        `Invalid priority "${parsedResult.priority}". Setting to "medium".`
-      );
-      parsedResult.priority = "MEDIUM";
-    }
-
-
-    if (!Array.isArray(parsedResult.relatedSkills)) {
-      console.warn("relatedSkills is not an array. Converting to array.");
-      parsedResult.relatedSkills = parsedResult.relatedSkills
-        ? [parsedResult.relatedSkills]
-        : [];
-    }
-
-    return parsedResult;
+    return parseAIResponse(response.text) || fallbackResponse();
   } catch (e) {
-    console.error("Failed to parse JSON from AI response:", e.message);
-    
-    // console.error("Full error:", e);
-
-   
-    return {
-      summary: "Unable to process ticket automatically",
-      priority: "MEDIUM",
-      helpfulNotes: "Manual review required. AI parsing failed.",
-      relatedSkills: ["Manual Review"],
-    };  
+    console.error("❌ AI Analysis failed:", e.message);
+    return fallbackResponse();
   }
 };
 
-export default analyzeTicket;
+/**
+ * Semantic Duplicate Detection
+ */
+export const checkDuplicate = async (newTicket, existingTickets) => {
+  if (!existingTickets || existingTickets.length === 0) return null;
+
+  const systemInstruction = `You are a ticket deduplication specialist. 
+Determine if a new ticket is a semantically similar duplicate of an existing ticket.
+Even if wording is different, identify if the underlying cause is the same.
+Return ONLY a JSON object:
+{
+  "isDuplicate": boolean,
+  "parentTicketId": "string or null",
+  "reason": "brief explanation"
+}`;
+
+  const ticketList = existingTickets
+    .map(
+      (t) => `ID: ${t._id}, Title: ${t.title}, Description: ${t.description}`,
+    )
+    .join("\n---\n");
+
+  const userPrompt = `New Ticket: ${newTicket.title} - ${newTicket.description}
+Existing Open Tickets:
+${ticketList}`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      config: {
+        responseMimeType: "application/json",
+        systemInstruction: systemInstruction,
+      },
+      contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+    });
+    const result = parseAIResponse(response.text);
+    return result && result.isDuplicate ? result : null;
+  } catch (e) {
+    console.error("❌ Duplicate check failed:", e.message);
+    return null;
+  }
+};
+
+
+function parseAIResponse(raw) {
+  if (!raw) return null;
+  try {
+    let cleaned = String(raw).trim();
+
+    
+    const markdownMatch =
+      cleaned.match(/```json\n([\s\S]*?)\n```/i) ||
+      cleaned.match(/```([\s\S]*?)```/i);
+    if (markdownMatch) {
+      cleaned = markdownMatch[1].trim();
+    }
+
+    
+    const jsonStart = cleaned.indexOf("{");
+    const jsonEnd = cleaned.lastIndexOf("}");
+    if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+      cleaned = cleaned.substring(jsonStart, jsonEnd + 1);
+    }
+
+    const parsedResult = JSON.parse(cleaned);
+
+    
+    if (parsedResult.priority) {
+      parsedResult.priority = parsedResult.priority.toUpperCase();
+    }
+
+    
+    if (Array.isArray(parsedResult.relatedSkills)) {
+      parsedResult.relatedSkills = parsedResult.relatedSkills.filter((skill) =>
+        ALL_SKILLS.map((s) => s.toLowerCase()).includes(skill.toLowerCase()),
+      );
+    }
+
+    return parsedResult;
+  } catch (err) {
+    console.error("⚠️ JSON Parsing error:", err.message);
+    return null;
+  }
+}
+
+function fallbackResponse() {
+  return {
+    summary: "Manual review required",
+    priority: "MEDIUM",
+    helpfulNotes: "AI processing encountered an error. Manual triage needed.",
+    relatedSkills: ["Manual Review"],
+  };
+}
